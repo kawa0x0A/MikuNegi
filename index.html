@@ -62,6 +62,13 @@ button:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
 .go{font-family:var(--logo);font-size:26px;padding:14px 56px;border-radius:40px;color:#06302d;background:linear-gradient(#a3fff2,var(--teal));
   box-shadow:0 6px 0 var(--teal-deep),0 12px 26px #0009;transition:transform .08s}
 .go:active{transform:translateY(4px);box-shadow:0 2px 0 var(--teal-deep)}
+#modes{display:flex;gap:10px;justify-content:center}
+.mode{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;width:156px;min-height:52px;padding:6px 8px;border-radius:14px;background:var(--panel);border:2px solid var(--line)}
+.mode b{font-family:var(--logo);font-weight:400;font-size:16px}
+.mode small{font-size:11px;font-weight:800;color:var(--muted)}
+#m-hard:not(:disabled){border-color:var(--pink)}#m-endless:not(:disabled){border-color:var(--teal)}
+.mode:not(:disabled):hover{transform:translateY(-2px)}
+.mode:disabled{cursor:default;opacity:.62}
 .hint{font-size:13px;font-weight:800;color:var(--muted);text-shadow:0 1px 0 #000;text-align:center}
 #best{font-size:14px;font-weight:800;color:var(--gold);text-shadow:0 1px 0 #000;min-height:1.3em}
 
@@ -97,6 +104,7 @@ button:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
 @media (max-height:520px){
   .logo .a{font-size:28px;-webkit-text-stroke-width:6px}.logo .b{font-size:44px;-webkit-text-stroke-width:7px}.sub{display:none}
   .go{font-size:20px;padding:9px 40px}
+  .foot{flex-direction:row;flex-wrap:wrap;justify-content:center}#best,#howto{display:none}.mode{width:124px;min-height:44px}
   .dim{justify-content:flex-start}.card{padding:10px}.card p{font-size:12px}
 }
 @media (prefers-reduced-motion:reduce){.banner,.card{animation-duration:.01s}}
@@ -115,7 +123,7 @@ button:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
       <button class="ib" id="pausebtn" aria-label="一時停止">Ⅱ</button>
     </div>
   </div>
-  <div id="stats">撃破 <b id="kills">0</b></div>
+  <div id="stats">撃破 <b id="kills">0</b> <span id="modename"></span></div>
   <div id="bosswrap" class="hide"><div id="bossname"></div><div id="bossbar"><div id="bosshp"></div></div></div>
   <div id="feverwrap"><div id="fevername">ネギまつりゲージ</div><div id="feverbar"><div id="fever"></div></div></div>
 </div>
@@ -126,6 +134,10 @@ button:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
   <div class="foot">
     <div id="best"></div>
     <button class="go" id="start">ネギを回す</button>
+    <div id="modes">
+      <button class="mode" id="m-hard"><b>激ネギ</b><small></small></button>
+      <button class="mode" id="m-endless"><b>エンドレス</b><small></small></button>
+    </div>
     <p class="hint" id="howto" style="margin:0">ドラッグ / WASD・矢印キーで移動。攻撃はネギにおまかせ。</p>
   </div>
 </section>
@@ -530,16 +542,24 @@ function choose(i){
 }
 
 /* ---------- Game state ---------- */
+const MODES={
+  normal:{label:'',msg:'ネギ、回します！',hp:1,spd:1,dmg:1,rate:1,boss:1},
+  hard:{label:'激ネギ',msg:'激ネギ、開幕！',hp:2,spd:1.14,dmg:1.8,rate:1.4,boss:2.2,xp:1.15,bg:['#4b1f55','#170a24']},
+  endless:{label:'エンドレス',msg:'終わらないネギ回し！',hp:1,spd:1,dmg:1,rate:1,boss:1,endless:true,bg:['#123f5c','#071427']},
+};
+const BOSS_CYCLE=['bossOnion','bossEgg','bossNoise'];
+const bestKey=k=>k==='normal'?'negi.best':'negi.best.'+k;
+function isUnlocked(){const b=store.get('negi.best',null);return store.get('negi.cleared',false)||!!(b&&b.clear)}
 let G=null,mode='title',titleT=0;
-function newGame(){
-  G={t:0,p:{x:0,y:0,hp:100,maxHp:100,iframe:0,face:1,walk:0,moving:false,lean:0},
+function newGame(key){
+  G={modeKey:key,m:MODES[key],cycle:0,t:0,p:{x:0,y:0,hp:100,maxHp:100,iframe:0,face:1,walk:0,moving:false,lean:0},
     enemies:[],bullets:[],gems:[],items:[],parts:[],texts:[],leeks:[],throws:[],mines:[],pulses:[],strikes:[],
     a1:0,a2:0,level:1,xp:0,xpNext:4,kills:0,score:0,up:{},pendingLv:0,cards:null,
     spawnAcc:0,nextRing:25,nextBoss:0,bossQueue:[{at:60,k:'bossOnion'},{at:120,k:'bossEgg'},{at:180,k:'bossNoise'}],
     feverG:0,feverNeed:140,feverT:0,strikeT:0,throwT:1,mineT:1,shake:0,hurtFlash:0,pickCombo:0,pickT:0,cam:{x:0,y:0},
     deadT:0,finalDead:false,hitStop:0};
 }
-const xpFor=n=>Math.floor(3+n*2.6+Math.pow(n,1.5)*1.05);
+const xpFor=n=>Math.floor((3+n*2.6+Math.pow(n,1.5)*1.05)*(G.m.xp||1));
 const stat={
   spin:()=>3.5*(1+.18*lv('speed'))*(G.feverT>0?2.3:1),
   dmg:()=>(1+.32*lv('power'))*(lv('gold')?1.6:1)*(G.feverT>0?1.5:1),
@@ -550,8 +570,8 @@ const stat={
 function heal(n){const p=G.p;const b=p.hp;p.hp=Math.min(p.maxHp,p.hp+n);if(p.hp>b){text(p.x,p.y-60,'+'+Math.round(p.hp-b),'#8dffa0',20);sfx('heal')}}
 function viewHalf(){return {w:W/2/ZOOM,h:H/2/ZOOM}}
 function spawn(k,x,y,o){
-  const t=ET[k],hm=t.boss?1:(1+G.t/60*.85+Math.pow(G.t/180,2)*2.4),sm=t.boss?1:1+G.t/420;
-  const e={k,t,x,y,kx:0,ky:0,hp:t.hp*hm,maxHp:t.hp*hm,r:t.r,spd:t.spd*sm*rnd(.92,1.08),dmg:t.boss?t.dmg:Math.round(t.dmg*(1+G.t/110)),flash:0,hitT:new Float32Array(32).fill(-9),tT:-9,wob:rnd(TAU),face:1,st:0,tm:rnd(.5,2.2),dx:0,dy:0,dead:false,spawnA:0};
+  const t=ET[k],M=G.m,over=M.endless?Math.max(0,G.t-180):0,hm=t.boss?M.boss*(o&&o.bossMul||1):(1+G.t/60*.85+Math.pow(G.t/180,2)*2.4)*M.hp*(1+over/55),sm=t.boss?1:(1+G.t/420)*M.spd*(1+over/800);
+  const e={k,t,x,y,kx:0,ky:0,hp:t.hp*hm,maxHp:t.hp*hm,r:t.r,spd:t.spd*sm*rnd(.92,1.08),dmg:Math.round((t.boss?t.dmg:t.dmg*(1+G.t/110))*M.dmg*(1+over/200)),flash:0,hitT:new Float32Array(32).fill(-9),tT:-9,wob:rnd(TAU),face:1,st:0,tm:rnd(.5,2.2),dx:0,dy:0,dead:false,spawnA:0};
   if(o)Object.assign(e,o);G.enemies.push(e);return e;
 }
 function edgePos(extra=50){
@@ -560,7 +580,7 @@ function edgePos(extra=50){
 }
 function director(dt){
   const t=G.t,boss=G.enemies.some(e=>e.t.boss);
-  let rate=4.2+t*.125;if(boss)rate*=.6;
+  let rate=Math.min(45,(4.2+t*.125)*G.m.rate);if(boss)rate*=.6;
   if(G.enemies.length<300)G.spawnAcc+=rate*dt;
   while(G.spawnAcc>=1){
     G.spawnAcc--;
@@ -571,13 +591,19 @@ function director(dt){
   }
   if(t>=G.nextRing&&G.bossQueue.every(b=>Math.abs(b.at-t)>6)){
     G.nextRing+=25;
-    const n=Math.round(30+t/3.5),v=viewHalf(),R=Math.hypot(v.w,v.h)*.92,k=t>90?'tomato':'onion';
+    const n=Math.min(110,Math.round(30+t/3.5)),v=viewHalf(),R=Math.hypot(v.w,v.h)*.92,k=t>90?'tomato':'onion';
     for(let i=0;i<n;i++){const a=i/n*TAU;spawn(k,G.p.x+Math.cos(a)*R,G.p.y+Math.sin(a)*R)}
     banner('かこまれた！','');
   }else if(t>=G.nextRing)G.nextRing+=12;
   const q=G.bossQueue[0];
   if(q&&!q.warned&&t>=q.at-2.2){q.warned=true;banner(ET[q.k].name+' 降臨！','boss');sfx('warn')}
-  if(q&&t>=q.at){G.bossQueue.shift();const [x,y]=edgePos(90);spawn(q.k,x,y,{tm:2});}
+  if(q&&t>=q.at){
+    G.bossQueue.shift();const [x,y]=edgePos(90);spawn(q.k,x,y,{tm:2,bossMul:q.mul||1});
+    if(G.m.endless&&!G.bossQueue.length){
+      G.cycle++;const k=BOSS_CYCLE[(G.cycle-1)%3];
+      G.bossQueue.push({at:q.at+60,k,mul:11000*Math.pow(1.75,G.cycle)/ET[k].hp});
+    }
+  }
 }
 function banner(txt,cls){
   const b=$('#banners'),d=document.createElement('div');d.className='banner '+cls;d.textContent=txt;b.replaceChildren(d);
@@ -608,7 +634,7 @@ function kill(e){
     let left=e.t.xp;while(left>0){const v=left>=10?10:left>=3?3:1;left-=v;const a=rnd(TAU),d=rnd(20,130);dropGem(e.x+Math.cos(a)*d,e.y+Math.sin(a)*d,v)}
     G.items.push({x:e.x,y:e.y,k:'heal'});
     banner(e.t.name+' 撃破！','');
-    if(e.k==='bossNoise')G.finalDead=true;
+    if(e.k==='bossNoise'&&!G.m.endless)G.finalDead=true;
   }else{
     dropGem(e.x,e.y,e.t.xp);
     const r=Math.random();
@@ -787,14 +813,17 @@ function update(dt){
   if(G.items.length)G.items=G.items.filter(i=>!i.done);
   director(dt);
   while(G.xp>=G.xpNext){G.xp-=G.xpNext;G.level++;G.pendingLv++;G.xpNext=xpFor(G.level)}
-  if(G.pendingLv>0&&mode==='play'){mode='levelup';sfx('lv');input.reset();showLevelUp()}
+  if(G.pendingLv>0&&mode==='play'){
+    if(UP.some(u=>lv(u.id)<u.max&&(!u.req||u.req()))){mode='levelup';sfx('lv');input.reset();showLevelUp()}
+    else{heal(10*G.pendingLv);G.score+=500*G.pendingLv;G.pendingLv=0}
+  }
   if(G.finalDead&&mode!=='clearing'){finish(true)}
 }
 function gainXp(v){G.xp+=v;G.score+=v*2}
 function bossAI(e,dt,nx,ny,d,vx,vy){
   const kind=e.t.boss;e.tm-=dt;
   const summon=(n,k)=>{for(let i=0;i<n;i++){const a=i/n*TAU;spawn(k,e.x+Math.cos(a)*(e.r+40),e.y+Math.sin(a)*(e.r+40))}burst(e.x,e.y,20,ART_COL.onion,300,5)};
-  const radial=(n,off,s=170)=>{for(let i=0;i<n;i++){const a=off+i/n*TAU;G.bullets.push({x:e.x,y:e.y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,r:10,life:6,dmg:8,spin:0})}};
+  const radial=(n,off,s=170)=>{for(let i=0;i<n;i++){const a=off+i/n*TAU;G.bullets.push({x:e.x,y:e.y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,r:10,life:6,dmg:Math.round(8*G.m.dmg),spin:0})}};
   if(kind==='summon'&&e.tm<=0){e.tm=3.4;summon(8,'onion')}
   const canCharge=kind==='charge'||kind==='barrage';
   if(canCharge){
@@ -841,12 +870,13 @@ document.addEventListener('visibilitychange',()=>{
 
 /* ---------- Flow ---------- */
 function show(id,on){$(id).classList.toggle('hide',!on)}
-function start(){
-  initAudio();newGame();A.playing=true;mode='play';input.reset();
+function start(key='normal'){
+  initAudio();newGame(key);A.playing=true;mode='play';input.reset();
   A.nextT=clock()+.05;A.queue.length=0;A.step=0;
   show('#title',false);show('#result',false);show('#pause',false);show('#levelup',false);show('#hud',true);
   $('#banners').replaceChildren();hudCache={};
-  banner('ネギ、回します！','');
+  $('#modename').textContent=G.m.label?'　'+G.m.label:'';
+  banner(G.m.msg,'');
   const v=viewHalf(),R0=clamp(Math.min(v.w,v.h)*.8,190,300);
   for(let i=0;i<16;i++){const a=i/16*TAU;spawn('onion',Math.cos(a)*R0,-22+Math.sin(a)*R0)}
 }
@@ -859,21 +889,29 @@ function toTitle(){
 function refreshBest(){
   const b=store.get('negi.best',null);
   $('#best').textContent=b?`ハイスコア ${b.score.toLocaleString()}　${b.clear?'全ボス撃破':fmtT(b.time)+' 生存'}`:'';
+  const open=isUnlocked(),hard=store.get(bestKey('hard'),null),end=store.get(bestKey('endless'),null);
+  for(const [id,rec] of [['#m-hard',hard?`${hard.score.toLocaleString()}${hard.clear?'・制覇':''}`:'難しさ大幅アップ'],['#m-endless',end?`最長 ${fmtT(end.time)}`:'ボスが無限に来る']]){
+    const b2=$(id);b2.disabled=!open;b2.querySelector('small').textContent=open?rec:'ノーマルクリアで解放';
+  }
 }
 function showResult(clear){
   mode='result';
   const score=Math.round(G.score+G.t*20+(clear?20000+G.p.hp*50:0));
-  $('#rh').textContent=clear?'全ボス撃破！':'ゲームオーバー';
-  $('#rh').style.color=clear?'var(--leek)':'#ff8fb8';
-  const rank=clear?'称号：ネギの歌姫':G.t>=120?'称号：ネギマスター':G.t>=60?'称号：ネギ職人':G.t>=25?'称号：ネギ見習い':'称号：ネギ初心者';
+  const M=G.m,key=G.modeKey,hard=key==='hard',T=G.t;
+  $('#rh').textContent=M.endless?'エンドレス終了':clear?(hard?'激ネギ制覇！':'全ボス撃破！'):'ゲームオーバー';
+  $('#rh').style.color=clear||M.endless?'var(--leek)':'#ff8fb8';
+  const rank=M.endless?(T>=600?'称号：ネギの神様':T>=420?'称号：ネギ仙人':T>=240?'称号：不眠不休のネギ回し':'称号：ネギ修行中')
+    :clear?(hard?'称号：激ネギの歌姫':'称号：ネギの歌姫'):T>=120?'称号：ネギマスター':T>=60?'称号：ネギ職人':T>=25?'称号：ネギ見習い':'称号：ネギ初心者';
   $('#rank').textContent=rank;
-  $('#r-time').textContent=fmtT(G.t);$('#r-lv').textContent=G.level;$('#r-kills').textContent=G.kills.toLocaleString();$('#r-score').textContent=score.toLocaleString();
-  const b=store.get('negi.best',null),rec=!b||score>b.score;
-  $('#newrec').textContent=rec?'ハイスコア更新！':'';
-  if(rec)store.set('negi.best',{score,time:G.t,clear});
+  $('#r-time').textContent=fmtT(T);$('#r-lv').textContent=G.level;$('#r-kills').textContent=G.kills.toLocaleString();$('#r-score').textContent=score.toLocaleString();
+  const had=isUnlocked();
+  if(clear&&key==='normal')store.set('negi.cleared',true);
+  const b=store.get(bestKey(key),null),rec=!b||score>b.score;
+  if(rec)store.set(bestKey(key),{score,time:T,clear});
+  $('#newrec').textContent=[rec?'ハイスコア更新！':'',!had&&isUnlocked()?'激ネギとエンドレスが解放！':''].filter(Boolean).join('　');
   show('#hud',false);show('#result',true);
 }
-$('#start').onclick=start;$('#retry').onclick=start;$('#resume').onclick=resume;$('#quit').onclick=toTitle;$('#totitle').onclick=toTitle;
+$('#start').onclick=()=>start('normal');$('#m-hard').onclick=()=>start('hard');$('#m-endless').onclick=()=>start('endless');$('#retry').onclick=()=>start(G.modeKey);$('#resume').onclick=resume;$('#quit').onclick=toTitle;$('#totitle').onclick=toTitle;
 $('#pausebtn').onclick=()=>{if(mode==='play')pause()};
 $('#mute').onclick=()=>{initAudio();setMute(!A.muted)};
 setMute(A.muted);refreshBest();
@@ -895,7 +933,7 @@ function drawFloor(g,cx,cy,hw,hh,fever){
   g.beginPath();for(let s=s0;s<=s1;s++)for(let l=0;l<5;l++){const y=s*sp+l*18;g.moveTo(cx-hw,y);g.lineTo(cx+hw,y)}g.stroke();
 }
 function bg(g){
-  const gr=g.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.max(W,H)*.75);gr.addColorStop(0,'#232a68');gr.addColorStop(1,'#0c0e2a');g.fillStyle=gr;g.fillRect(0,0,W,H);
+  const gr=g.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.max(W,H)*.75);const bc=G&&G.m.bg||['#232a68','#0c0e2a'];gr.addColorStop(0,bc[0]);gr.addColorStop(1,bc[1]);g.fillStyle=gr;g.fillRect(0,0,W,H);
 }
 let hudCache={};
 function setT(id,v){if(hudCache[id]!==v){hudCache[id]=v;$(id).textContent=v}}
@@ -1006,8 +1044,8 @@ function renderTitle(g,dt){
   g.restore();
   g.setTransform(DPR,0,0,DPR,0,0);
   const short=H<520;
-  const s=clamp(Math.min(H*(short?.0036:.0036),W*.0058),1.1,short?1.9:3.4);
-  const cx=W/2,cy=H*(short?.84:.75);
+  const s=clamp(Math.min(H*(short?.0036:.0031),W*.0058),1.1,short?1.9:3.4);
+  const cx=W/2,cy=H*(short?.8:.68);
   // orbit ring of leeks behind and in front
   const R=118*s*.62,n=6,a0=titleT*2.2;
   const tilt=.42,cy0=cy-46*s;
@@ -1037,7 +1075,7 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 
-if(location.hash==='#debug')window.__negi={get G(){return G},get mode(){return mode},start,update,choose,input,ET,lv,spawn,startFever,beatS,A,onStep,toTitle,setView:(w,h)=>{W=w;H=h;ZOOM=clamp(Math.min(W,H)/620,.58,1.5)}};
+if(location.hash==='#debug')window.__negi={get G(){return G},get mode(){return mode},start,update,choose,input,ET,lv,spawn,startFever,beatS,A,onStep,toTitle,showResult,setView:(w,h)=>{W=w;H=h;ZOOM=clamp(Math.min(W,H)/620,.58,1.5)}};
 </script>
 </body>
 </html>
