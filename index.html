@@ -960,6 +960,7 @@ function pause(){mode='paused';show('#pause',true);input.reset()}
 function resume(){mode='play';show('#pause',false)}
 function toTitle(){
   mode='title';G=null;A.playing=true;
+  A.nextT=clock()+.05;A.queue.length=0;A.step=0;
   show('#pause',false);show('#result',false);show('#hud',false);show('#title',true);$('#banners').replaceChildren();refreshBest();
 }
 function refreshBest(){
