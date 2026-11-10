@@ -425,7 +425,7 @@ const MEL=[
 const clock=()=>A.ac?A.ac.currentTime:performance.now()/1000;
 const m2f=m=>440*Math.pow(2,(m-69)/12);
 function initAudio(){
-  if(A.ac){if(A.ac.state==='suspended')A.ac.resume();return}
+  if(A.ac){resumeAudio();return}
   const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
   try{
     const ac=new AC();A.ac=ac;
@@ -511,6 +511,9 @@ function sfx(k){
     case'heal':[0,7,12].forEach((n,i)=>tone(A.sfx,'sine',m2f(76+n),t+i*.07,.16,.24));break;
   }
 }
+// Mobile browsers can leave audio suspended or interrupted after an app switch; only a user gesture revives it.
+function resumeAudio(){if(A.ac&&A.ac.state!=='running'&&A.ac.state!=='closed')A.ac.resume().catch(()=>{})}
+for(const ev of['touchend','click','keydown'])addEventListener(ev,resumeAudio,{capture:true,passive:true});
 function setMute(v){A.muted=v;store.set('negi.mute',v);if(A.master)A.master.gain.value=v?0:.5;$('#mute').textContent=v?'×':'♪';$('#mute').style.opacity=v?.55:1}
 
 /* ---------- Upgrades ---------- */
@@ -582,6 +585,7 @@ function choose(i){
 }
 
 /* ---------- Game state ---------- */
+const PUBLIC_URL='https://kawa0x0a.github.io/MikuNegi/';
 const MODES={
   normal:{label:'',msg:'ネギ、回します！',hp:1,spd:1,dmg:1,rate:1,boss:1},
   hard:{label:'激ネギ',msg:'激ネギ、開幕！',hp:2.3,spd:1.14,dmg:1.9,rate:1.4,boss:2.6,xp:1.15,bg:['#4b1f55','#170a24']},
@@ -983,7 +987,7 @@ function showResult(clear){
   $('#r-time').textContent=fmtT(T);$('#r-lv').textContent=G.level;$('#r-kills').textContent=G.kills.toLocaleString();$('#r-score').textContent=score.toLocaleString();
   const shareTxt=`ぐるぐるネギまつり${M.label?'【'+M.label+'】':''}\n${rank.replace('称号：','')}／スコア ${score.toLocaleString()}／撃破 ${G.kills.toLocaleString()}体／生存 ${fmtT(T)}\n#ぐるぐるネギまつり`;
   G.shareText=shareTxt;
-  $('#share').href='https://twitter.com/intent/tweet?text='+encodeURIComponent(shareTxt)+'&url='+encodeURIComponent(location.origin+location.pathname);
+  $('#share').href='https://twitter.com/intent/tweet?text='+encodeURIComponent(shareTxt)+'&url='+encodeURIComponent(PUBLIC_URL);
   const had=isUnlocked();
   if(clear&&key==='normal')store.set('negi.cleared',true);
   const b=store.get(bestKey(key),null),rec=!b||score>b.score;
@@ -1008,7 +1012,7 @@ async function renderResultImage(){
   g.fillStyle='#0c0e2a';g.fillRect(0,0,w,h);
   if(cv.width&&cv.height){const k=Math.max(w/cv.width,h/cv.height),dw=cv.width*k,dh=cv.height*k;g.drawImage(cv,(w-dw)/2,(h-dh)/2,dw,dh)}
   const dim=g.createLinearGradient(0,0,w,0);dim.addColorStop(0,'rgba(8,10,36,.5)');dim.addColorStop(1,'rgba(8,10,36,.86)');g.fillStyle=dim;g.fillRect(0,0,w,h);
-  g.save();g.translate(330,655);g.scale(-5.4,5.4);drawMiku(g,{t:1,beat:0,meme:true,gold:!!lv('gold'),leekLen:70});g.restore();
+  g.save();g.translate(330,655);g.scale(-5.4,5.4);drawMiku(g,{t:1,beat:0,leekLen:76});g.restore();
   const px=632,py=34,pw=536,ph=607,cx=px+pw/2,pad=38;
   g.beginPath();g.roundRect(px,py,pw,ph,26);g.fillStyle='rgba(25,29,74,.95)';g.fill();g.lineWidth=4;g.strokeStyle='#39c5bb';g.stroke();
   g.textAlign='center';g.textBaseline='alphabetic';g.lineJoin='round';
@@ -1020,7 +1024,7 @@ async function renderResultImage(){
   g.strokeStyle='#ffffff30';g.lineWidth=2;g.beginPath();g.moveTo(px+pad,py+268);g.lineTo(px+pw-pad,py+268);g.stroke();
   const rows=[['生存時間',fmtT(r.time)],['レベル',String(r.level)],['撃破数',r.kills.toLocaleString()],['スコア',r.score.toLocaleString()]];
   rows.forEach(([a,b],i)=>{const y=py+318+i*54;g.font=`800 30px ${body}`;g.textAlign='left';g.fillStyle='#d6def5';g.fillText(a,px+pad+10,y);g.textAlign='right';g.fillStyle='#fff';g.font=`${i===3?40:32}px ${logo}`;g.fillText(b,px+pw-pad-10,y)});
-  g.textAlign='center';g.font=`800 20px ${body}`;g.fillStyle='#a9b6d8';g.fillText((location.host+location.pathname).replace(/\/$/,''),cx,py+ph-24);
+  g.textAlign='center';g.font=`800 20px ${body}`;g.fillStyle='#a9b6d8';g.fillText(PUBLIC_URL.replace(/^https:\/\/|\/$/g,''),cx,py+ph-24);
   return new Promise(res=>c.toBlob(res,'image/png'));
 }
 const shotName=()=>`negi-matsuri-${G.res.score}.png`;
@@ -1130,7 +1134,7 @@ function renderGame(g,dt){
   const dead=mode==='dying'||(mode==='result'&&p.hp<=0);
   if(!dead&&!(p.iframe>0&&!fev&&(T*22|0)%2)){
     g.save();g.translate(p.x,p.y);g.scale(.74*p.face,.74);
-    drawMiku(g,{t:T,beat:beatS.pos,walk:p.walk,moving:p.moving,lean:p.lean*p.face,gold,hurt:G.hurtFlash>.05,meme:fev});g.restore();
+    drawMiku(g,{t:T,beat:beatS.pos,walk:p.walk,moving:p.moving,lean:p.lean*p.face,gold,hurt:G.hurtFlash>.05});g.restore();
   }
   // HP under feet
   if(!dead){const bw=46;g.fillStyle='#000a';g.fillRect(p.x-bw/2-1,p.y+9,bw+2,7);g.fillStyle=p.hp/p.maxHp>.3?'#6ff37a':'#ff5a6a';g.fillRect(p.x-bw/2,p.y+10,bw*clamp(p.hp/p.maxHp,0,1),5)}
@@ -1186,7 +1190,7 @@ function drawCutin(g){
   for(let i=0;i<16;i++){const y=cyB-bh/2-sk+(i+.5)/16*(bh+2*sk),o=((k*1500+i*337)%(W+400))-200,l=120+(i*71)%200;g.moveTo(W-o,y);g.lineTo(W-o+l,y)}
   g.stroke();
   const s=bh/70;g.translate(W*.58,cyB+58*s);g.scale(-s,s);
-  drawMiku(g,{t:G.t,beat:beatS.pos,meme:true,gold:!!lv('gold'),leekLen:66});
+  drawMiku(g,{t:G.t,beat:beatS.pos,leekLen:76});
   g.restore();g.restore();
 }
 function calcVisualLeeks(){if(mode!=='play')calcLeeks()}
